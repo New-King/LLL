@@ -1,0 +1,7 @@
+# macOS
+.DS_Store
+
+# Obsidian：窗口布局与回收站（跨设备同步易冲突，且无内容价值）
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
+.trash/
