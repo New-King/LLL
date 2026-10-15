@@ -21,10 +21,12 @@
 7、状态怎么更新：节点返回的字段按各自的 reducer 处理
    （默认覆盖 / MessagesValue 追加 / ReducedValue 自定义）
    
-8、记忆：compile({ checkpointer }) + { configurable: { thread_id } }；
+8、检查点checkpointer：
+       graph.ts：compile({ checkpointer })   script.ts:  { configurable: { thread_id } }；
       #「比手动拼-messages-多做两件事」 
       - 不用自己拼：只发新消息，历史按 thread_id 从 checkpointer 里读回来。
-      - 存的是「每一步的完整状态快照」，不只是 messages —— 所以才多出「挂起后恢复」「从某一步重跑」这些能力
+      - 存的是「每一步的完整状态快照State」，不只是 messages —— 所以才多出「挂起后恢复」「从某一步重跑」这些能力
+      - 某一时刻的完整状态快照 + 它是从哪开始的 + 下一步是哪个节点。
 
 9、人工介入（Human-in-the-Loop）：interrupt + Command
    在节点或工具里调 interrupt(payload) 让图停下来等人：
@@ -44,15 +46,37 @@
 
 
 10、长期记忆（Store）：跨 thread 记住用户
-    与 checkpointer 的区别（两个维度）：
-    - 范围：checkpointer 只限一条 thread；Store 跨 thread
-    - 性质：checkpointer 存图的执行快照（框架自动写，用于恢复/续跑）；
-            Store 存要长期记住的数据（自己 put / search，用到时才读）
-    #一句话：前者是运行存档，后者是长期资料
+    存要长期记住的数据（自己 put / search，自己要做记忆策略存什么自己定）
     用法：
-    - 挂载：compile({ checkpointer, store: new MemoryStore() })
+    - 挂载：compile({ checkpointer, store: new InMemoryStore() })
     - 传运行时数据：invoke(..., { context: { userId } })
     - 写：runtime.store.put([userId, "memories"], key, value)
-    - 读：runtime.store.search([userId, "memories"])   # 前缀匹配，默认最多 10 条
-          search(..., { query: "..." }) 
-    
+
+	① 不带 query —— 就是"列出"：按 namespace 前缀把条目拿出来
+	runtime.store.search([userId, "memories"])  //该namespace下的前10条
+	runtime.store.search([userId])              //取全部的前10条
+
+	② 带 query —— 语义检索：按相似度排序(需要配置embedding模型)
+	runtime.store.search([userId, "memories"], { query: "用户喜欢什么风格" })
+    new InMemoryStore({ index: { embeddings, dims: 1536 } })
+
+ 
+**官方两种推荐策略
+
+① 维护一份载体（如文本或json，每次都传并更新，key传同一个）
+
+② 集合（每次存新的关键信息，用的时候只检索出相关的几条附带，key每次都是新的）
+    例：
+	[user-1, memories] / m1 → "用户叫小王"
+	[user-1, memories] / m2 → "偏好：回答简短"
+	[user-1, memories] / m3 → "正在学 LangGraph"
+	[user-1, memories] / m4 → "上周问过时间旅行"
+    ...
+
+|     | Profile（一份）                 | Collection（一堆）             |
+| --- | --------------------------- | -------------------------- |
+| 写入  | 每次改整份 → **越大越容易改坏**         | 加一条就行，简单                   |
+| 读取  | **整份塞进 prompt**（越大越占 token） | 按需检索，只取几条                  |
+| 难点  | 更新时漏掉/改错                    | **删除和更新**哪条（模型容易只加不改）、检索要准 |
+| 召回  | 信息都在一起，不会漏                  | 检索不好就取不到                   |
+
