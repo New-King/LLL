@@ -98,7 +98,7 @@ tool_reult: 上轮工具调用结果，openai有独立的role=tool，其他的�
   #摘要长什么样？
   一段结构化 markdown，开头声明"仅作背景，只响应之后的新消息"。区块：目标 / 约束 / 已完成（带日期）/ 进行中 / 阻塞 / 关键决策 / 相关文件 / 下一步。 每条一两行，只保留有价值的结论。二次压缩是更新上一份，不是重写。
 
-2.3、Memory
+2.3、[[Memory]]
 https://hermes-agent.nousresearch.com/docs/zh-Hans/user-guide/features/memory
 
    **特点**
@@ -107,14 +107,14 @@ https://hermes-agent.nousresearch.com/docs/zh-Hans/user-guide/features/memory
 - 安全扫描：记忆被接受之前会扫描注入和数据外泄模式，防止被注入系统 prompt
 - 外部记忆：对于超出 MEMORY.md 和 USER.md 范围的更深层持久化记忆，Hermes 内置了 8 个外部记忆提供商插件，外部提供商与内置记忆**并行**运行（而非替代）
 
-**Memory由三部分组成**
-1. 内置记忆文件（**用于system prompt，存储时机：turn结尾**）
+[[**Memory由三部分组成**]]
+1. 内置记忆文件（**用于system prompt，存储时机：触发memory工具/turn结尾**）
    每次对话结束(Turn)，会进行memory update，Agent会自动更新以下信息
    memory.md （环境、工具、项目约束...）
    user.md       （用户信息与偏好） 
    soul.md         (用户对agnet的设定，行为准则规范)
    
-2. SQLite (关系型数据库，存对话数据，**存储时机：turn中的多个时机增量存储：游标 + 增量，用于会话恢复和跨会话检索**)
+2. SQLite (关系型数据库，存对话数据，**存储时机：多个时机，增量存储：游标 + 增量，用于会话恢复和跨会话检索**)
     [存什么？]
    - 聊天记录
    - 会话元数据（session_id / session_key / 标题、时间戳、profile、token 用量）
