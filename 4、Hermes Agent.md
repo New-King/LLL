@@ -179,13 +179,16 @@ https://hermes-agent.nousresearch.com/docs/zh-Hans/user-guide/features/memory
 	拿回这个工具怎么传参 tool_call(名字, 参数) → 
 	Hermes 按这个名字去真正执行
 ```
+
 ### 3.6、delegate_task（派子 agent）
 
-**把一个大任务拆出去，交给另一个独立上下文的子 agent 去做。严格意义上的"子 agent"在 Hermes 里就一个入口**
+**把一个任务丢给另一个独立上下文的子 agent 去做，只有它的最终总结会回到主 agent。**
 
-- 子 agent 分两种：leaf（只干活的，不能再往下派、也不能问你）/ orchestrator（可以继续往下派，最多 2 层）。
-- 用 background=true 时只返回一个 id，结果稍后以一条消息的形式回来。
-- 如果要求子 agent 按固定格式返回但格式不对，也不会把结果丢掉（标 completed + 原始文本）。
+- 怎么触发：主 agent 自己调这个工具——Hermes 里"派子 agent"就这一个入口。
+- 默认要等它跑完、结果当场返回；
+- background=true 是"不等"：立刻返回一个 id，先干别的，子 agent 跑完后结果作为一条新消息回来。
+- 子 agent 默认是 leaf：不能往下派、也不能问你；配成 orchestrator 才能继续往下派（最多 2 层）。
+- 可以要求它按固定格式（output_schema）返回；格式不对会自动重试一次，再不对也不丢结果（原样给你 + 标"格式没达标"）。
 
 ### 3.7、文件工具（防止乱改）
 
