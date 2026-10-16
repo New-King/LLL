@@ -159,11 +159,12 @@ https://hermes-agent.nousresearch.com/docs/zh-Hans/user-guide/features/memory
 
 ### 3.4、execute_code（写脚本一次调多个工具）
 
-**让模型写一段 Python，在脚本里连续调好几个工具，最后只把 print 出来的结果拿回来。**
+**让模型写一段 Python脚本（本工具参数），在脚本里连续调好几个工具，最后只把 print 出来的结果拿回来。**
 
 - 什么时候用：需要连调 3 个以上工具，中间还要做判断 / 循环 / 过滤的时候。
 - 好处：本来要来回好几轮（调工具 → 看结果 → 再调），现在一轮搞定，而且中间结果不进上下文。
 - 脚本跑在一个常驻的解释器里；输出太长会自动存成文件，只给路径 + 头尾预览，需要时再去读。
+- 场景：比如要读10个文件内容，不可能每次都把文件内容又塞回tool_result然后继续下一轮
 
 ### 3.5、tool_search / tool_describe / tool_call（三个"桥接工具"：按需加载工具）
 
@@ -180,7 +181,7 @@ https://hermes-agent.nousresearch.com/docs/zh-Hans/user-guide/features/memory
 ```
 ### 3.6、delegate_task（派子 agent）
 
-**把一个大任务拆出去，交给另一个独立上下文的子 agent 去做。**
+**把一个大任务拆出去，交给另一个独立上下文的子 agent 去做。严格意义上的"子 agent"在 Hermes 里就一个入口**
 
 - 子 agent 分两种：leaf（只干活的，不能再往下派、也不能问你）/ orchestrator（可以继续往下派，最多 2 层）。
 - 用 background=true 时只返回一个 id，结果稍后以一条消息的形式回来。
