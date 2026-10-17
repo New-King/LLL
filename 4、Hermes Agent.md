@@ -203,11 +203,13 @@ https://hermes-agent.nousresearch.com/docs/zh-Hans/user-guide/features/memory
 
 ---
 
-## 4、不是工具，但同样关键的设计
+## 4、Eval
 
-### 4.1、长内容一律"落盘 + 头尾预览"
+ 测试对象：已保存的轨迹 JSON（messages + trace），不是现场调模型。
 
-**任何特别长的内容都不整个塞进上下文，而是存成文件，只给头尾预览和路径。**
-
-- 比如 hook 注入的内容每次请求都会重发，超过 10K 字符就落盘，免得每轮重复烧 token。
-
+  **三层**
+  1、单元测试：正例用于检测方法是否能用，负例用于检测方法是否稳定可靠。（需同时通过）
+     测试啥？
+     - message结构是否合法
+    -  检查同一次对话循环里，发给 API 的 system prompt 与 tools 是否中途被改掉。
+    -
