@@ -180,15 +180,19 @@ https://hermes-agent.nousresearch.com/docs/zh-Hans/user-guide/features/memory
 	Hermes 按这个名字去真正执行
 ```
 
-### 3.6、delegate_task（派子 agent）
+### 3.6、delegate_task（子 agent）
 
 **把一个任务丢给另一个独立上下文的子 agent 去做，只有它的最终总结会回到主 agent。**
 
 - 怎么触发：主 agent 自己调这个工具——Hermes 里"派子 agent"就这一个入口。
-- 默认要等它跑完、结果当场返回；
-- background=true 是"不等"：立刻返回一个 id，先干别的，子 agent 跑完后结果作为一条新消息回来。
-- 子 agent 默认是 leaf：不能往下派、也不能问你；配成 orchestrator 才能继续往下派（最多 2 层）。
-- 可以要求它按固定格式（output_schema）返回；格式不对会自动重试一次，再不对也不丢结果（原样给你 + 标"格式没达标"）。
+- 派出去后立刻拿回一个 id，你和主 agent 都能接着干别的，不用干等。
+- 派出去时就已经有一条状态 running 的**记录**（内存 + 落库），所以"还在不在跑"是查记录，不是去问子 agent。
+- 跑完时 Hermes **新造一个"完成事件"**：先落库，再塞进一个**全局共享队列**；CLI / 网关在**每轮 turn 收尾时**清这个队列，把"结果 + 当初派它的目标"作为一条**合成的 user 消息**注入会话 → 开新 turn。所以看起来像模型"自己又开口了"，**不是界面提示，也不是模型去轮询**。
+- 注入的那条消息里还会提醒模型："你可能已经不需要了，自己判断用不用 / 重派"。
+- 子agent下派，默认一层，多层要修改参数 max_spawn_depth
+- 如何调用？
+  **派发**：传 `tasks=[{goal, context}]`，不写 `action`（数组一个元素 = 一个子 agent）。
+  **其他操作**：`action="list"` 看进度、`action="steer"` 追加纠偏、`action="stop"` 停掉；`/new` 或关会话会把整棵子 agent 杀掉。
 
 ### 3.7、文件工具（防止乱改）
 
@@ -206,3 +210,4 @@ https://hermes-agent.nousresearch.com/docs/zh-Hans/user-guide/features/memory
 **任何特别长的内容都不整个塞进上下文，而是存成文件，只给头尾预览和路径。**
 
 - 比如 hook 注入的内容每次请求都会重发，超过 10K 字符就落盘，免得每轮重复烧 token。
+
