@@ -243,7 +243,7 @@ https://hermes-agent.nousresearch.com/docs/zh-Hans/user-guide/features/memory
 
 #### 4.2.2、工具选择评测 —— 契约（`evals/tool_search/`）
 
-1. 准备：5 个真实场景任务
+1. 准备：代码里手写死 5 个任务（一句 prompt + 该调哪些工具），**不需要历史对话**
 2. 跑：tool_search 开 / 关各跑一遍
 3. 看：该调的底层工具有没有调到（`expected_underlying_tools`）
 
@@ -251,17 +251,72 @@ https://hermes-agent.nousresearch.com/docs/zh-Hans/user-guide/features/memory
 
 ### 4.3、什么时候跑
 
-| 时机 | 跑什么 | 谁触发 |
-|---|---|---|
-| 写完代码 | `scripts/run_tests.sh` | 人手动，`AGENTS.md` 硬要求 |
-| 发版 | 全量 `tests/` | `stable-release.yml` 自动调 `ci.yaml` |
-| 打 tag `v*` | 真实 provider 的 live 测试 | 自动（便宜模型、有美元上限） |
-| 改压缩 / 工具选择 | `evals/` 对应场景 | 人手动 |
+| 时机         | 跑什么                                          | 谁触发 / 在哪                           |
+| ---------- | -------------------------------------------- | ---------------------------------- |
+| 写完代码       | `scripts/run_tests.sh`：不传路径 = 全量；传路径 = 只跑那部分 | 人手动，本地                             |
+| 提 PR       | 按改动挑 lane（**增量**）                            | CI 自动，见 4.4                        |
+| 合进 main    | 全部 lane（**全量**）                              | CI 自动，见 4.4                        |
+| 发版         | 全量 `tests/`                                  | `stable-release.yml` 自动调 `ci.yaml` |
+| 打 tag `v*` | 真实 provider 的 live 测试                        | 自动（便宜模型、有美元上限）                     |
+| 改压缩 / 工具选择 | `evals/` 对应场景                                | 人手动                                |
 
-### 4.4、三层落点
+“空 diff / 改 `.github/` 就全开”只发生在 **CI**：`classify_changes.py` 拿不到改动列表（API 失败、没有 base），或这次改动包含 CI 配置本身 → 所有 lane 全开，防止“判断失效”变成“漏测”。
 
-| 层 | 测什么 | 调模型 |
-|---|---|---|
-| 单元层（`tests/agent/`） | 数据 / 结构对不对 | 否 |
-| 回放层（`evals/`） | 结果对不对（只限能定义“对”的点） | 是 |
-| 线上（日志） | 真实表现 | 已在跑 |
+本地不受影响：本地跑多少由 `run_tests.sh` 后面跟的路径决定，不跟就是全量。
+
+### 4.4、增量 vs 全量
+
+PR 阶段是**增量**：`scripts/ci/classify_changes.py` 读改了哪些文件，决定开哪几个 lane。
+
+| lane | 什么时候开 |
+|---|---|
+| `python` | 改了 `.py` 就开（denylist：只有全是文档 / 纯前端才跳过） |
+| `docker` / `nix` | 改了 Dockerfile / flake / 依赖清单 |
+| `frontend` | 改了 TS / 桌面端 |
+| `deps` / `uv_lock` / `npm_lock` | 改了 `pyproject.toml` / `uv.lock` / `package-lock.json` |
+| `scan` | 改了 Python、`.pth`、setup hook |
+| `e2e` 系列 | **PR 上强制关**，只在发版或手动触发时开 |
+
+三条铁律：
+
+1. **fail open**：宁可多跑一个 lane，绝不漏跑可能被改坏的
+2. 空 diff、或改了 `.github/` → 所有 lane 全开
+3. push 到 main → 所有 lane 全开（没有 diff 可比）
+
+所以：**增量只发生在 PR 阶段，合进 main 后一律全量。**
+
+### 4.5、三层落点
+
+| 层   | 在哪                          | 测什么                                  | 调模型 | 谁跑           |
+| --- | --------------------------- | ------------------------------------ | --- | ------------ |
+| 单元层 | `tests/agent/`              | 数据 / 结构对不对（快、结果确定）                   | 否   | 本地手动 + CI 自动 |
+| 回放层 | `evals/`                    | 准备对话素材，查看结果对不对，只限好观测答案的点（如工具调用、事实问题） | 是   | **只有手动**     |
+| 线上层 | `agent.log` / `gateway.log` | 真实表现，出事后回溯                           | 已在跑 | 系统自动记，人按需看   |
+
+一句话：**单元层进 CI，回放层永远手动，线上层只记录不判定。**
+
+
+## 5、定时任务Cron
+
+调度器：每隔几十秒扫一次 job 列表，而不是为每个 job 设置定时器
+
+两个必须处理的点：
+
+**① 先改 next_run_at，再执行**
+- 先执行再改时间：跑到一半进程崩了，时间还停在原地 → 重启后又跑一遍，重复
+- 先改再执行：崩了最多漏一次，不会重复
+- 取舍：宁可少跑，不可重复 —— 发消息、扣钱、提交代码，重复的代价更大
+
+**② 加锁，防两个进程同时 tick**
+一台机器上可能同时开着 gateway 常驻服务、CLI、桌面端，都读同一个 `jobs.json`。
+- 没锁：两个进程同时扫到同一条任务，各自执行一遍 → 消息发两条
+- 有锁：`<home>/cron/.tick.lock`，谁抢到谁 tick，另一个这轮直接跳过
+
+job = {
+  "id": "daily-report",
+  "schedule": "0 9 * * *",     ← 规则（怎么算下次）
+  "next_run_at": "2026-10-19T09:00:00Z",   ← tick 拿它和现在比
+  "enabled": true,
+  "prompt": "...",
+  "delivery": {...}
+}
