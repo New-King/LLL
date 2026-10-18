@@ -205,7 +205,17 @@ https://hermes-agent.nousresearch.com/docs/zh-Hans/user-guide/features/memory
 
 ## 4、Eval评估测试
 
-### 4.1、契约测试：只判“过 / 不过”，不调模型
+先分清两个目录 —— 它们不是一个东西：
+
+| | `tests/`（全量测试） | `evals/`（评测） |
+|---|---|---|
+| 是什么 | 940 个 pytest 文件 | 70 个场景 |
+| 调不调模型 | 不调 | 调 |
+| 结果 | 确定，跑十次一样 | 有波动 |
+| 开销 | 秒级，不花钱 | 分钟级，花 API 费 |
+| 什么时候跑 | 本地提交前 + 发版 CI 自动 | **手动**，改关键逻辑时跑 |
+
+### 4.1、`tests/`：契约测试（自动跑）
 
 | 测什么         | 怎么判断                                | 调模型 |
 | ----------- | ----------------------------------- | --- |
@@ -218,7 +228,7 @@ https://hermes-agent.nousresearch.com/docs/zh-Hans/user-guide/features/memory
 | provider 差异 | cache 标记打在哪；不支持的参数怎么降级              | 否   |
 | 记忆          | provider 读写位置；压缩后不重复注入              | 否   |
 
-### 4.2、回放评测：真跑模型，只有两处
+### 4.2、`evals/`：回放评测（手动跑，真调模型）
 
 #### 4.2.1、压缩评测 —— 评分（`evals/compaction/`）
 
@@ -239,7 +249,16 @@ https://hermes-agent.nousresearch.com/docs/zh-Hans/user-guide/features/memory
 
 不判回答写得好不好，只判“选对工具没有”。
 
-### 4.3、三层落点
+### 4.3、什么时候跑
+
+| 时机 | 跑什么 | 谁触发 |
+|---|---|---|
+| 写完代码 | `scripts/run_tests.sh` | 人手动，`AGENTS.md` 硬要求 |
+| 发版 | 全量 `tests/` | `stable-release.yml` 自动调 `ci.yaml` |
+| 打 tag `v*` | 真实 provider 的 live 测试 | 自动（便宜模型、有美元上限） |
+| 改压缩 / 工具选择 | `evals/` 对应场景 | 人手动 |
+
+### 4.4、三层落点
 
 | 层 | 测什么 | 调模型 |
 |---|---|---|
