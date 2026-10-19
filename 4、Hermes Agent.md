@@ -312,6 +312,7 @@ PR 阶段是**增量**：`scripts/ci/classify_changes.py` 读改了哪些文件�
 - 没锁：两个进程同时扫到同一条任务，各自执行一遍 → 消息发两条
 - 有锁：`<home>/cron/.tick.lock`，谁抢到谁 tick，另一个这轮直接跳过
 
+```
 job = {
   "id": "daily-report",
   "schedule": "0 9 * * *",     ← 规则（怎么算下次）
@@ -320,3 +321,55 @@ job = {
   "prompt": "...",
   "delivery": {...}
 }
+```
+
+---
+
+## 6、多 Agent（Kanban）
+
+**先认名词**
+
+| 词 | 是什么 |
+|---|---|
+| Kanban | 日语「看板」，Trello 那种板：卡片在「待办 / 进行中 / 完成」之间移动 |
+| 卡片（task） | 一条任务：做什么、分给谁 |
+| worker | 真正干活的 agent 实例，按 profile 区分 |
+| dispatcher | 派活的人：定期扫板，把待办的卡分给空闲 worker |
+| claim（领取） | worker 抢下卡片，别人就不能再抢 |
+
+**和 delegate_task 的区别**
+
+| | delegate_task | Kanban |
+|---|---|---|
+| 怎么派 | 主 agent 当场叫、等结果 | 挂在板上，worker 自己领 |
+| 进程挂了 | 任务没了 | 进度在 SQLite，重启还能续 |
+| 审批 | 没有 | 有 review，人批了才算完 |
+
+**核心流程**
+
+```
+① 建卡：kanban_create → 卡片进「待办」
+② dispatcher 定期扫板（默认 60 秒）：
+     回收过期 claim → 挑出待办的卡 → 原子领取 → 拉起对应 profile 的 worker
+③ worker 干活，中途 kanban_heartbeat 报到（证明自己还活着）
+④ 结束：kanban_complete 完成 / kanban_block 卡住 / kanban_request_review 请人看
+⑤ 人批：通过就归档；request_changes 打回重做
+```
+
+**卡片会经历的状态**
+
+```
+待办 → 已领取 → 完成
+          ↓
+        卡住（unblock 后回待办）
+          ↓
+       待评审 → 通过 / 打回
+```
+
+**三个关键设计**
+
+- **原子领取**：靠 SQLite 事务抢卡，两个 worker 不会抢到同一张
+- **过期回收**：worker 挂了没心跳，claim 会被回收，卡回到待办，不会永远卡死
+- **默认跑在 gateway 里**（`kanban.dispatch_in_gateway: true`），也可以拆成独立 systemd 服务
+
+**注意**：这套工具默认是关的，要 `hermes tools enable kanban --platform <p>` 才会给 worker 配上。
