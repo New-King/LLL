@@ -1,72 +1,60 @@
-- 是什么：多个 agent 分工干活，不是一个全干（multi-agent / MAS）
+- 是什么：多个 agent 怎么分活、怎么交接；按「控制权怎么走」只分两类
 
-- 两种协作形态
-  主从：主 agent 拆任务 → 派给多个 worker → 汇总
-  对等：agent 平级，互相协作
+- 容易混淆的
+  pipeline 不是多 agent：一个调用链走多步（检索 → 重排 → 生成），只有一个 agent 在决策
+  群聊也不是「没有决策」：有个规则决定谁说话（轮询 / 让模型选 / 按条件），那只是机制不是 agent
 
-- 按跨度分三层
-  同进程：临时子 agent（一次性）
-  同机多身份：持久 agent（有名字、有记忆、能恢复）
-  跨机器 / 框架：标准协议互通（A2A）
+- 各家用的哪种
+  Hermes：派发（delegate_task）+ 异步派发（kanban 任务队列）
+  Claude Code / Cursor：派发（主 agent 派子 agent）
+  Anthropic 多 agent 研究：派发（并行多个 subagent）
+  OpenAI Agents SDK：两种都支持（agents as tools / handoffs）
+  CrewAI：多个独立 agent + 顺序或层级编排
+  AutoGen：协作（群聊协商）
+  LangGraph：骨架，两种都能搭
 
-- 六个设计问题
-  上下文怎么传 / 结果怎么汇合 / 怎么防循环 / 挂了怎么办 / 成本与并发 / 状态放内存还是放库
+- 为什么多数项目选派发
+  成本说得清（谁花多少 token）
+  死循环能拦（有总步数上限）
+  出问题能定位（trace 是一条链，不是一团）
+  代价：子 agent 看不到全局，回来只能给摘要
 
-- 与子 agent 的关系：子 agent = 最简单的多 agent（主从）
+- 一句话
+  能单 agent 就单 agent；要拆优先派发；异步长任务才上任务队列
 
-- 什么时候值得：任务可拆且互相独立 / 一个上下文装不下 / 要并行
+**高频三问：**
 
-```mermaid
-flowchart TB
-    U["用户 / 外部系统"]
+1. 为什么需要多 agent？单 agent 不行吗？
+    单agent同一份上下文且连续，更加稳定可靠，缓存命中高比较节省。
+     （上下文满、速度慢）
+    
+    多agent：
+     - 发布任务需要交代上下文细节，环境，返回格式等约束。
+     - 乘性放大：90% * 90% * 90%，最终=70%左右
+     - 开发周期拉长，测试成本增加
+    
+    只有三种情况值得拆：子任务分工明确且可并行 / 一个上下文装不下 / 需要不同专长和工具集。
 
-    subgraph Coord["协调层（成熟系统的核心）"]
-        SUP["主 agent / Supervisor<br/>规划 · 拆解 · 汇总"]
-        KB[("任务板 / 队列<br/>持久化状态")]
-        DISP["调度器 Dispatcher<br/>依赖 · 优先级 · 并发上限 · 重试"]
-    end
+2. 怎么分工：派发还是协作？
+    看结果要不要回来。必须回来 → 派发（supervisor / 子 agent）；
+    转走就不管 → 协作（handoff / 群聊）。
+    生产上多数用派发：成本能算、循环能拦、trace 是一条链。
 
-    subgraph Exec["执行层：worker 池"]
-        W1["worker 1<br/>独立上下文 + 独立预算"]
-        W2["worker 2"]
-        W3["worker N"]
-    end
-
-    ENV["执行环境<br/>文件 / 终端 / 沙箱"]
-
-    U --> SUP
-    SUP -->|写任务| KB
-    KB -->|取可执行任务| DISP
-    DISP -->|派发| W1
-    DISP --> W2
-    DISP --> W3
-    W1 --> ENV
-    W2 --> ENV
-    W3 --> ENV
-
-    W1 -.->|结果 / 评论 / 附件 / 阻塞| KB
-    W2 -.-> KB
-    W3 -.-> KB
-
-    KB -->|汇总| AGG["汇总 / 评审 agent"]
-    AGG --> SUP
-    SUP -->|最终结果| U
-
-    HUM["人（HITL）<br/>评论 · 审批 · 解除阻塞"] <-.-> KB
-    W2 <-.->|跨机器 / 框架：A2A| PEER["外部 agent"]
-```
-
-```mermaid
-stateDiagram-v2
-    [*] --> pending
-    pending --> running: 调度器派发
-    running --> done: 完成
-    running --> blocked: 等依赖 / 等人
-    blocked --> running: unblock
-    running --> failed: 失败
-    failed --> pending: 重试
-    running --> pending: 进程挂了 → reclaim
-```
+3. 怎么防失控：死循环、成本爆炸、进程挂了怎么办？
+   - 死循环：全局轮数上限 + 子agent职责明确（输出契约和结束信号）+ 检测来回转交（A 转 B、B 又转回 A）
+   - 成本爆炸：全局 token / 调用次数预算，超了直接停
+   - 挂了：同步（主 agent 在等）靠任务超时；异步（任务进了池子）靠加字锁占坑 + 到期时间，超时没人续就把活退回待办
+   - orchestrator：统一管理状态，避免多 agent 之间直接调用
 
 
+5. 拆子 agent 能省钱吗？
+   一般不省，反而更贵：每个子 agent 都要重带系统提示词、工具定义、任务背景，结果还要摘要回来。
+   只有两种情况可能省：原文很长但后续还要多轮（摘要替代原文，不用反复重读）；子任务用便宜模型。
+   真正的收益是上下文隔离和并行，不是省钱。
 
+
+6. Multi-Agent的几种形态
+     - 父agent派发任务
+     - 顺序流水线，一个agent干完交给下一个agent
+     - 共同协作（）
+			     - 图状态机（把协作画成显示的流程图）
