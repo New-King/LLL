@@ -4,9 +4,8 @@
 3、客服助手（嵌入网页、app）
 
 
-**Agent原理**
-
-大模型（大脑cpu）+ Harness（一系列影响Agent最终输出的工具）  
+**Agent**
+大模型 + Harness（一系列影响Agent最终输出的工具）  
 [https://dg-ai-notes.pages.dev/](https://dg-ai-notes.pages.dev/)
 
   
@@ -48,13 +47,11 @@ loopn
 
           
   2.  Plan and Execute 计划模式
-
        先想好完整计划（列出所有步骤），再按计划执行  
       
   3. **混合模式**：先做 Plan（列出步1、步2、步3），然后在每一步里用 ReAct（思考→行动→观察）去执行。  
 
   4. 循环模式 【程序决定是否继续】
-
        - 一般在模型外层决定，判断代码是否通过验证，或者是否计算出来某个确定值  
   
   5. Reflection 反思【在React外多套一层】
