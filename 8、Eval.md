@@ -26,24 +26,27 @@
 
 4. 如何进行 agent 测评？
 
+   **相关工具（各管一段）**
+   · pytest / Vitest —— 写断言，批量跑用例，出通过/失败报告（单测）
+   · LangSmith —— 建题库（Dataset）、跑实验对比（Experiment）、看 trace、人工标注队列
+   · LangFuse / Phoenix —— 线上 trace、成本、延迟监控
+   · RAGAS —— RAG 两段指标（faithfulness、context precision / recall），LLM 当裁判
+   · DeepEval —— LLM 裁判类指标，写法接近 pytest，RAG 和 agent 都能用
+
    ① 先明确评谁（题目怎么出）
    · Agent：任务 + 期望的最终结果（可选：期望调用哪些工具，兼容 RAG 类型的 agent）
    · RAG：问题 + 该命中哪些块/文件 + 参考答案
-   工具：LangSmith Dataset 建题库；起步阶段 json/csv 也够
 
    ② 判分手段：能断言的先断言，判不了的才调模型
    · 断言测试（不花钱、结果确定）：输出结构、工具参数、步数、内容值（有没有包含 xxx）
    · LLM 当裁判 / 人工抽检：主观质量（答得好不好），断言覆盖不到
-   工具：断言用 pytest / Vitest；LLM 裁判用 LangSmith evaluator、RAGAS、DeepEval；人工用 LangSmith 标注队列
 
    ③ 看哪几个数
    · 端到端成功率 —— 一批任务跑完的完成率，主指标
    · 轨迹 —— 工具调用顺序、调用次数、有没有绕路
    · 成本与延迟 —— token 开销、耗时、稳定性
-   工具：LangSmith（Experiment 对比 + trace）；线上监控 LangFuse / Phoenix
 
    ④ RAG 分两段看，才知道是谁的问题
    · 检索段：该召回的块有没有被召回（hit_rate、mrr、context recall）
    · 生成段：答案有没有编造、是否切题（faithfulness、answer relevancy）
    · 检索没中就别怪模型；两项都高但答案仍错，才是生成或提示词的问题
-   工具：LlamaIndex 自带 evaluation 够用；要 context precision / recall 上 RAGAS
